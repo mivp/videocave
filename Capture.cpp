@@ -49,6 +49,11 @@
 using namespace std;
 using namespace videocave;
 
+int WIDTH=1920; //1280;
+int HEIGHT=1080; //720;
+int SCREEN_WIDTH=1366;
+int SCREEN_HEIGHT=3072;
+
 // MPI buffer
 char buff[1024], buff_r[1024];  
 int numprocs;  
@@ -56,6 +61,9 @@ MPI_Status stat;
 unsigned char* buff_data = NULL; // to store frame data
 int buff_data_length;
 unsigned char *rgbImageData = NULL;
+bool first_frame = true;
+static BMDTimeValue startoftime;
+BMDTimeValue frameRateDuration, frameRateScale;
 
 static pthread_mutex_t	frame_finished_mutex_t;
 static bool frame_finished = true;
@@ -72,6 +80,15 @@ static BMDConfig		g_config;
 static IDeckLinkInput*	g_deckLinkInput = NULL;
 
 static unsigned long	g_frameCount = 0;
+
+
+unsigned int startTime;
+uint getTime()
+{
+    struct timeval tp;
+    gettimeofday(&tp, NULL);
+    return (tp.tv_sec * 1000 + tp.tv_usec / 1000);
+}
 
 DeckLinkCaptureDelegate::DeckLinkCaptureDelegate() : m_refCount(1)
 {
@@ -134,7 +151,46 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 					timecode->GetString(&timecodeString);
 				}
 			}
+			if (timecodeString)
+				free((void*)timecodeString);
 
+			if(first_frame) {
+				BMDTimeValue hframedur;
+				HRESULT h = videoFrame->GetHardwareReferenceTimestamp(frameRateScale, &startoftime, &hframedur);
+				assert(h == S_OK);
+				//BMDTimeValue hframedur;
+				//videoFrame->GetStreamTime(&startoftime, &hframedur, frameRateScale);
+
+				startTime = getTime();
+			}
+
+			//BMDTimeValue frameTime, frameDuration;
+			//videoFrame->GetStreamTime(&frameTime, &frameDuration, frameRateScale);
+			//cout << frameTime << " " << frameDuration << endl;
+			//bool skip = false;
+
+			BMDTimeScale htimeScale = frameRateScale;
+			BMDTimeValue hframeTime;
+			BMDTimeValue hframeDuration;
+			bool skip = false;
+			HRESULT h = videoFrame->GetHardwareReferenceTimestamp(htimeScale, &hframeTime, &hframeDuration);
+			if (h == S_OK)  {
+				//cout << "startoftime " << startoftime << " ";
+				double frametime = (double)(hframeTime-startoftime) / (double)hframeDuration;
+				//cout << "hframeDuration: " << hframeDuration <<  " hframeTime: " << hframeTime << flush << endl;
+				if ( ((int)frametime) > g_frameCount) { skip = true; }
+
+				//cout << "frametime: " << frametime << " g_frameCount:" << g_frameCount << flush << endl;
+
+				unsigned int timePass = getTime() - startTime;
+				if(timePass > g_frameCount * (hframeDuration/30.0))
+					skip = 1;
+				//cout << "timePass: " << timePass << " time:" << g_frameCount * (hframeDuration/30.0) << flush << endl;
+			}
+
+			if(skip)
+				cout << "#" << flush;
+			
 			if(g_frameCount % 30 == 0) {
 				/*
 				printf("Frame received (#%lu) [%s] - %s - Size: %li bytes\n",
@@ -146,11 +202,10 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 				cout << "." << flush;
 			}
 
-			if (timecodeString)
-				free((void*)timecodeString);
+			
 
 			// process frame data
-			if(g_frameCount == 0) {
+			if(first_frame) {
 				strcpy(buff, "length");
 				for(int i=1;i<numprocs;i++)
 					MPI_Send(buff, 256, MPI_CHAR, i, 0, MPI_COMM_WORLD);
@@ -164,39 +219,30 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 
 				for(int i=1;i<numprocs;i++)  
 					MPI_Recv(buff_r, 256, MPI_CHAR, i, 0, MPI_COMM_WORLD, &stat);
+
+				first_frame = false;
 			}
 
-			strcpy(buff, "update");
-			for(int i=1;i<numprocs;i++)
-				MPI_Send(buff, 256, MPI_CHAR, i, 0, MPI_COMM_WORLD);
+			if(!skip) {
+				strcpy(buff, "update");
+				for(int i=1;i<numprocs;i++)
+					MPI_Send(buff, 256, MPI_CHAR, i, 0, MPI_COMM_WORLD);
 
-			for(int i=1;i<numprocs;i++)  
-				MPI_Recv(buff_r, 256, MPI_CHAR, i, 0, MPI_COMM_WORLD, &stat);
+				for(int i=1;i<numprocs;i++)  
+					MPI_Recv(buff_r, 256, MPI_CHAR, i, 0, MPI_COMM_WORLD, &stat);
+				
+				videoFrame->GetBytes(&frameBytes);
+				assert(frameBytes);
+
+				for(int i=1;i<numprocs;i++)
+					MPI_Send((char*)frameBytes, videoFrame->GetRowBytes() * videoFrame->GetHeight(), MPI_CHAR, i, 0, MPI_COMM_WORLD);
+
+				for(int i=1;i<numprocs;i++)  
+					MPI_Recv(buff_r, 256, MPI_CHAR, i, 0, MPI_COMM_WORLD, &stat);
+			}
 			
-			videoFrame->GetBytes(&frameBytes);
-			assert(frameBytes);
-
-			for(int i=1;i<numprocs;i++)
-				MPI_Send((char*)frameBytes, videoFrame->GetRowBytes() * videoFrame->GetHeight(), MPI_CHAR, i, 0, MPI_COMM_WORLD);
-
-			for(int i=1;i<numprocs;i++)  
-				MPI_Recv(buff_r, 256, MPI_CHAR, i, 0, MPI_COMM_WORLD, &stat);
 
 			//cout << "End of frame " << g_frameCount << flush << endl;
-
-			/*
-			if (g_videoOutputFile != -1)
-			{
-				videoFrame->GetBytes(&frameBytes);
-				write(g_videoOutputFile, frameBytes, videoFrame->GetRowBytes() * videoFrame->GetHeight());
-
-				if (rightEyeFrame)
-				{
-					rightEyeFrame->GetBytes(&frameBytes);
-					write(g_videoOutputFile, frameBytes, videoFrame->GetRowBytes() * videoFrame->GetHeight());
-				}
-			}
-			*/
 		}
 
 		if (rightEyeFrame)
@@ -208,18 +254,6 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 		//frame_finished = true;
 		//pthread_mutex_unlock(&frame_finished_mutex_t);
 	}
-
-	// Handle Audio Frame
-	/*
-	if (audioFrame)
-	{
-		if (g_audioOutputFile != -1)
-		{
-			audioFrame->GetBytes(&audioFrameBytes);
-			//write(g_audioOutputFile, audioFrameBytes, audioFrame->GetSampleFrameCount() * g_config.m_audioChannels * (g_config.m_audioSampleDepth / 8));
-		}
-	}
-	*/
 
 	if (g_config.m_maxFrames > 0 && videoFrame && g_frameCount >= g_config.m_maxFrames)
 	{
@@ -410,6 +444,8 @@ int runCapture(int argc, char *argv[])
 		}
 	}
 
+	displayMode->GetFrameRate(&frameRateDuration, &frameRateScale);
+
 	// Print the selected configuration
 	g_config.DisplayConfiguration();
 
@@ -577,8 +613,8 @@ int main( int argc, char* argv[] ){
 	}
 	else {
 		cout << "(" << myid << ") numdisplay: " << numprocs-1 << endl;
-        Display* display = new Display(myid, 1920, 1080, numprocs-1, false);
-        int ret = display->initWindow(300, 600);
+        Display* display = new Display(myid, WIDTH, HEIGHT, numprocs-1, false);
+        int ret = display->initWindow(SCREEN_WIDTH, SCREEN_HEIGHT);
         display->setup();
 
 		strcpy(buff, "ready");
@@ -598,7 +634,7 @@ int main( int argc, char* argv[] ){
 				MPI_Recv(&buff_data_length, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &stat);
 				cout << "(" << myid << ") data length: " << buff_data_length << endl;
 				buff_data = new unsigned char[buff_data_length];
-				rgbImageData = new unsigned char [1920*1080*3];
+				rgbImageData = new unsigned char [WIDTH*HEIGHT*3];
 				
 				strcpy(buff, "ok");
 		        MPI_Send(buff, 256, MPI_CHAR, 0, 0, MPI_COMM_WORLD);
