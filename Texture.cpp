@@ -26,8 +26,8 @@ namespace videocave {
                 format = globalFormat = GL_RGB;
             }
             else {
-                format = GL_RGBA8;
-                globalFormat = GL_RGBA;
+                format = GL_RGBA;
+                globalFormat = GL_BGRA;
                 type = GL_UNSIGNED_INT_8_8_8_8_REV;
             }
 
@@ -36,7 +36,7 @@ namespace videocave {
             glBindTexture(GL_TEXTURE_2D, gluid);
 
             glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, globalFormat, type, NULL);
-
+          
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER); //GL_CLAMP_TO_BORDER GL_REPEAT
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minFilter);

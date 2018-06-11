@@ -14,8 +14,6 @@ namespace videocave {
         ~Display();
         int initWindow(int width, int height);
         void update(const uint8_t* rgb_pixels);
-        void update(  const uint8_t* pixels_y, int stride_y, const uint8_t* pixels_u, int stride_u,
-                            const uint8_t* pixels_v, int stride_v);
         void setup();
         void render();
 
@@ -30,7 +28,7 @@ namespace videocave {
         bool mInitialized;
         bool mIsYUV;
         
-        Texture *mTextureY, *mTextureU, *mTextureV;
+        Texture *mTexture;
         Material* mMaterial;
         SSQuad* mQuad;
     };

@@ -51,8 +51,8 @@ using namespace videocave;
 
 int WIDTH=1920; //1280;
 int HEIGHT=1080; //720;
-int SCREEN_WIDTH=1366;
-int SCREEN_HEIGHT=3072;
+int SCREEN_WIDTH= 400; //1366;
+int SCREEN_HEIGHT= 800; //3072;
 
 // MPI buffer
 char buff[1024], buff_r[1024];  
@@ -613,7 +613,7 @@ int main( int argc, char* argv[] ){
 	}
 	else {
 		cout << "(" << myid << ") numdisplay: " << numprocs-1 << endl;
-        Display* display = new Display(myid, WIDTH, HEIGHT, numprocs-1, false);
+        Display* display = new Display(myid, WIDTH, HEIGHT, numprocs-1, true);
         int ret = display->initWindow(SCREEN_WIDTH, SCREEN_HEIGHT);
         display->setup();
 
@@ -645,8 +645,9 @@ int main( int argc, char* argv[] ){
 
 				// now receive buffer and update display
 				MPI_Recv(buff_data, buff_data_length, MPI_UNSIGNED_CHAR, 0, 0, MPI_COMM_WORLD, &stat);
-				YUV422UYVY_ToRGB24((unsigned char*)buff_data, rgbImageData, buff_data_length);
-				display->update(rgbImageData);
+				//YUV422UYVY_ToRGB24((unsigned char*)buff_data, rgbImageData, buff_data_length);
+				//display->update(rgbImageData);
+				display->update((unsigned char*)buff_data);
 				display->render();
 				
 				strcpy(buff, "ok");

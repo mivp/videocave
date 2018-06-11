@@ -8,7 +8,7 @@ namespace videocave {
 
     Display::Display(int id, int w, int h, int num, bool yuv): 
                         mId(id), mNumDisplay(num), mWidth(w), mHeight(h), mInitialized(false),
-                        mTextureY(0), mTextureU(0), mTextureV(0), mMaterial(0), mQuad(0),
+                        mTexture(0), mMaterial(0), mQuad(0),
                         mIsYUV(yuv)
     {
 
@@ -16,27 +16,15 @@ namespace videocave {
 
     Display::~Display()
     {
-        if(mTextureY) delete mTextureY;
-        if(mTextureU) delete mTextureU;
-        if(mTextureV) delete mTextureV;
+        if(mTexture) delete mTexture;
         if(mMaterial) delete mMaterial;
         if(mQuad) delete mQuad;
     }
 
-    void Display::update(const uint8_t* rgb_pixels) {
-        if(mIsYUV || !mInitialized)
+    void Display::update(const uint8_t* pixels) {
+        if(!mInitialized)
             return;
-        mTextureY->updateTexture(rgb_pixels);
-    }
-
-    void Display::update(  const uint8_t* pixels_y, int stride_y, const uint8_t* pixels_u, int stride_u,
-                            const uint8_t* pixels_v, int stride_v) {
-
-        if(!mIsYUV)
-            return;
-        mTextureY->updateTexture(pixels_y, stride_y);
-        mTextureU->updateTexture(pixels_u, stride_u);
-        mTextureV->updateTexture(pixels_v, stride_v);
+        mTexture->updateTexture(pixels);
     }
 
     int Display::initWindow(int width, int height) {
@@ -85,20 +73,14 @@ namespace videocave {
 
         if(!mIsYUV) {
             cout << mId << ": Display::setup RGB() " << mWidth << " " << mHeight << endl;
-            mTextureY = new Texture(mWidth, mHeight, 3, 0);
-            mTextureY->initTexture();
+            mTexture = new Texture(mWidth, mHeight, 3, 0);
+            mTexture->initTexture();
             mMaterial = new ImageRGBMaterial();
         }
         else {
             cout << mId << ": Display::setup YUV() " << mWidth << " " << mHeight << endl;
-            mTextureY = new Texture(mWidth, mHeight, 1, 0);
-            mTextureY->initTexture();
-
-            mTextureU = new Texture(mWidth/2, mHeight/2, 1, 1);
-            mTextureU->initTexture();
-
-            mTextureV = new Texture(mWidth/2, mHeight/2, 1, 2);
-            mTextureV->initTexture();
+            mTexture = new Texture(mWidth/2, mHeight, 4, 0);
+            mTexture->initTexture();
 
             mMaterial = new ImageYUVMaterial();
         }
@@ -118,14 +100,8 @@ namespace videocave {
         GLSLProgram* shader = mMaterial->getShader();
         shader->bind();
 
-        mTextureY->bind();
+        mTexture->bind();
         shader->setUniform("uTexY", (int)0);
-        if(mIsYUV) {
-            mTextureU->bind();
-            mTextureV->bind();
-            shader->setUniform("uTexU", (int)1);
-            shader->setUniform("uTexV", (int)2);
-        }
 
         mQuad->draw();
         
