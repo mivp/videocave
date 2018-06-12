@@ -40,6 +40,11 @@ set(ALL_LIBS
 	-lpthread
 )
 
+option(BUILD_LOCAL_TEST "Build local test with small screen width" OFF)
+if(BUILD_LOCAL_TEST)
+    add_definitions(-DBUILD_LOCAL_TEST)
+endif(BUILD_LOCAL_TEST)
+
 # Compile apps
 add_subdirectory (external)
 

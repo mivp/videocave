@@ -51,39 +51,36 @@ using namespace videocave;
 
 int WIDTH=1920; //1280;
 int HEIGHT=1080; //720;
-int SCREEN_WIDTH=  1366; //400;
-int SCREEN_HEIGHT= 3072; //800;
 
-// MPI buffer
+#ifdef BUILD_LOCAL_TEST
+	int SCREEN_WIDTH=400;
+	int SCREEN_HEIGHT=800;
+#else
+	int SCREEN_WIDTH=1366;
+	int SCREEN_HEIGHT=3072;
+#endif
+
+// MPI
 char buff[1024], buff_r[1024];  
 int numprocs;  
 MPI_Status stat; 
 unsigned char* buff_data = NULL; // to store frame data
+unsigned char* part_buff = NULL; // to store part of buff to send to client
 int buff_data_length;
-unsigned char *rgbImageData = NULL;
+int part_buff_length;
 bool first_frame = true;
 static BMDTimeValue startoftime;
 BMDTimeValue frameRateDuration, frameRateScale;
-// buffer to send from master to client
-unsigned char* part_buff;
-int part_buff_length;
 
-static pthread_mutex_t	frame_finished_mutex_t;
-static bool frame_finished = true;
-
-
+// Capture
 static pthread_mutex_t	g_sleepMutex;
 static pthread_cond_t	g_sleepCond;
 static int				g_videoOutputFile = -1;
 static int				g_audioOutputFile = -1;
 static bool				g_do_exit = false;
-
 static BMDConfig		g_config;
-
 static IDeckLinkInput*	g_deckLinkInput = NULL;
-
 static unsigned long	g_frameCount = 0;
-
 
 unsigned int startTime;
 uint getTime()
@@ -121,13 +118,8 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 	void*								audioFrameBytes;
 
 	// Handle Video Frame
-	//if (videoFrame && frame_finished)
 	if (videoFrame)
 	{
-		//pthread_mutex_lock(&frame_finished_mutex_t);
-		//frame_finished = false;
-		//pthread_mutex_unlock(&frame_finished_mutex_t);
-
 		// If 3D mode is enabled we retreive the 3D extensions interface which gives.
 		// us access to the right eye frame by calling GetFrameForRightEye() .
 		if ( (videoFrame->QueryInterface(IID_IDeckLinkVideoFrame3DExtensions, (void **) &threeDExtensions) != S_OK) ||
@@ -161,16 +153,8 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 				BMDTimeValue hframedur;
 				HRESULT h = videoFrame->GetHardwareReferenceTimestamp(frameRateScale, &startoftime, &hframedur);
 				assert(h == S_OK);
-				//BMDTimeValue hframedur;
-				//videoFrame->GetStreamTime(&startoftime, &hframedur, frameRateScale);
-
 				startTime = getTime();
 			}
-
-			//BMDTimeValue frameTime, frameDuration;
-			//videoFrame->GetStreamTime(&frameTime, &frameDuration, frameRateScale);
-			//cout << frameTime << " " << frameDuration << endl;
-			//bool skip = false;
 
 			BMDTimeScale htimeScale = frameRateScale;
 			BMDTimeValue hframeTime;
@@ -178,17 +162,12 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			bool skip = false;
 			HRESULT h = videoFrame->GetHardwareReferenceTimestamp(htimeScale, &hframeTime, &hframeDuration);
 			if (h == S_OK)  {
-				//cout << "startoftime " << startoftime << " ";
 				double frametime = (double)(hframeTime-startoftime) / (double)hframeDuration;
-				//cout << "hframeDuration: " << hframeDuration <<  " hframeTime: " << hframeTime << flush << endl;
 				if ( ((int)frametime) > g_frameCount) { skip = true; }
-
-				//cout << "frametime: " << frametime << " g_frameCount:" << g_frameCount << flush << endl;
 
 				unsigned int timePass = getTime() - startTime;
 				if(timePass > g_frameCount * (hframeDuration/30.0))
 					skip = 1;
-				//cout << "timePass: " << timePass << " time:" << g_frameCount * (hframeDuration/30.0) << flush << endl;
 			}
 
 			if(skip)
@@ -205,8 +184,6 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 				cout << "." << flush;
 			}
 
-			
-
 			// process frame data
 			if(first_frame) {
 				strcpy(buff, "length");
@@ -220,8 +197,7 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 				part_buff_length = length / (numprocs - 1);
 				part_buff = new unsigned char[part_buff_length];
 				cout << "lenght: " << length << " part_buff_length: " << part_buff_length << endl;
-				//for(int i=1;i<numprocs;i++)
-				//	MPI_Send(&length, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+				
 				for(int i=1;i<numprocs;i++)
 					MPI_Send(&part_buff_length, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
 
@@ -255,14 +231,9 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 					MPI_Send(part_buff, part_buff_length, MPI_UNSIGNED_CHAR, i+1, 0, MPI_COMM_WORLD);
 				}
 
-				//for(int i=1;i<numprocs;i++)
-				//	MPI_Send((char*)frameBytes, videoFrame->GetRowBytes() * videoFrame->GetHeight(), MPI_CHAR, i, 0, MPI_COMM_WORLD);
-
 				for(int i=1;i<numprocs;i++)  
 					MPI_Recv(buff_r, 256, MPI_CHAR, i, 0, MPI_COMM_WORLD, &stat);
 			}
-			
-
 			//cout << "End of frame " << g_frameCount << flush << endl;
 		}
 
@@ -270,10 +241,6 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			rightEyeFrame->Release();
 
 		g_frameCount++;
-
-		//pthread_mutex_lock(&frame_finished_mutex_t);
-		//frame_finished = true;
-		//pthread_mutex_unlock(&frame_finished_mutex_t);
 	}
 
 	if (g_config.m_maxFrames > 0 && videoFrame && g_frameCount >= g_config.m_maxFrames)
@@ -349,8 +316,6 @@ int runCapture(int argc, char *argv[])
 
 	pthread_mutex_init(&g_sleepMutex, NULL);
 	pthread_cond_init(&g_sleepCond, NULL);
-
-	pthread_mutex_init(&frame_finished_mutex_t, NULL);
 
 	signal(SIGINT, sigfunc);
 	signal(SIGTERM, sigfunc);
@@ -564,50 +529,6 @@ bail:
 	return exitStatus;
 }
 
-
-void YUV422UYVY_ToRGB24(unsigned char* pbYUV, unsigned char* pbRGB, int yuv_len)
-{
-	// yuv_len: number of bytes
-	int B_Cb128,R_Cr128,G_CrCb128;
-    int Y0,U,Y1,V;
-    int R,G,B;
-
-	unsigned char *yuv_index;
-	unsigned char *rgb_index;
-
-	yuv_index = pbYUV;
-	rgb_index = pbRGB;
-
-    for (int i = 0, j = 0; i < yuv_len; )
-    {
-		U  = (int)((float)yuv_index[i++]-128.0f);
-		Y0 = (int)(1.164f * ((float)pbYUV[i++]-16.0f));
-		V  = (int)((float)yuv_index[i++]-128.0f);
-		Y1 = (int)(1.164f * ((float)yuv_index[i++]-16.0f));
-
-		R_Cr128   =  (int)(1.596f*V);
-		G_CrCb128 = (int)(-0.813f*V - 0.391f*U);
-		B_Cb128   =  (int)(2.018f*U);
-
-		R= Y0 + R_Cr128;
-		G = Y0 + G_CrCb128;
-		B = Y0 + B_Cb128;
-
-		rgb_index[j++] = max(0, min(R, 255));
-		rgb_index[j++] = max(0, min(G, 255));
-		rgb_index[j++] = max(0, min(B, 255));
-
-		R= Y1 + R_Cr128;
-		G = Y1 + G_CrCb128;
-		B = Y1 + B_Cb128;
-
-		rgb_index[j++] = max(0, min(R, 255));
-		rgb_index[j++] = max(0, min(G, 255));
-		rgb_index[j++] = max(0, min(B, 255));
-	}
-}
-
-
 int main( int argc, char* argv[] ){
 
     char idstr[1024]; 
@@ -631,6 +552,9 @@ int main( int argc, char* argv[] ){
     	} 
 
 		runCapture(argc, argv);
+
+		if (part_buff)
+			delete  []part_buff;
 	}
 	else {
 		cout << "(" << myid << ") numdisplay: " << numprocs-1 << endl;
@@ -679,9 +603,6 @@ int main( int argc, char* argv[] ){
 
 		if (buff_data)
 			delete  []buff_data;
-
-		if (rgbImageData)
-			delete []rgbImageData;
 	}
 
 	return 0;
