@@ -86,7 +86,8 @@ namespace videocave {
         }
 
         mQuad = new SSQuad();
-        mQuad->init(mId, mNumDisplay);
+        //mQuad->init(mId, mNumDisplay);
+        mQuad->init(1, 1);
 
         mInitialized = true;
     }   

@@ -51,8 +51,8 @@ using namespace videocave;
 
 int WIDTH=1920; //1280;
 int HEIGHT=1080; //720;
-int SCREEN_WIDTH= 400; //1366;
-int SCREEN_HEIGHT= 800; //3072;
+int SCREEN_WIDTH=  1366; //400;
+int SCREEN_HEIGHT= 3072; //800;
 
 // MPI buffer
 char buff[1024], buff_r[1024];  
@@ -64,6 +64,9 @@ unsigned char *rgbImageData = NULL;
 bool first_frame = true;
 static BMDTimeValue startoftime;
 BMDTimeValue frameRateDuration, frameRateScale;
+// buffer to send from master to client
+unsigned char* part_buff;
+int part_buff_length;
 
 static pthread_mutex_t	frame_finished_mutex_t;
 static bool frame_finished = true;
@@ -214,8 +217,13 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 					MPI_Recv(buff_r, 256, MPI_CHAR, i, 0, MPI_COMM_WORLD, &stat);
 
 				int length = videoFrame->GetRowBytes() * videoFrame->GetHeight();
+				part_buff_length = length / (numprocs - 1);
+				part_buff = new unsigned char[part_buff_length];
+				cout << "lenght: " << length << " part_buff_length: " << part_buff_length << endl;
+				//for(int i=1;i<numprocs;i++)
+				//	MPI_Send(&length, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
 				for(int i=1;i<numprocs;i++)
-					MPI_Send(&length, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
+					MPI_Send(&part_buff_length, 1, MPI_INT, i, 0, MPI_COMM_WORLD);
 
 				for(int i=1;i<numprocs;i++)  
 					MPI_Recv(buff_r, 256, MPI_CHAR, i, 0, MPI_COMM_WORLD, &stat);
@@ -234,8 +242,21 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 				videoFrame->GetBytes(&frameBytes);
 				assert(frameBytes);
 
-				for(int i=1;i<numprocs;i++)
-					MPI_Send((char*)frameBytes, videoFrame->GetRowBytes() * videoFrame->GetHeight(), MPI_CHAR, i, 0, MPI_COMM_WORLD);
+				// get part of buffer
+				int part_row_bytes = videoFrame->GetRowBytes() / (numprocs-1);
+				for(int i=0; i < numprocs-1; i++) {
+					unsigned char* psource = (unsigned char*)frameBytes + i*part_row_bytes;
+					unsigned char* pdest = part_buff;
+					for(int r = 0; r < videoFrame->GetHeight(); r++) {
+						memcpy(pdest, psource, part_row_bytes);
+						psource += videoFrame->GetRowBytes();
+						pdest += part_row_bytes;
+					}
+					MPI_Send(part_buff, part_buff_length, MPI_UNSIGNED_CHAR, i+1, 0, MPI_COMM_WORLD);
+				}
+
+				//for(int i=1;i<numprocs;i++)
+				//	MPI_Send((char*)frameBytes, videoFrame->GetRowBytes() * videoFrame->GetHeight(), MPI_CHAR, i, 0, MPI_COMM_WORLD);
 
 				for(int i=1;i<numprocs;i++)  
 					MPI_Recv(buff_r, 256, MPI_CHAR, i, 0, MPI_COMM_WORLD, &stat);
@@ -613,7 +634,8 @@ int main( int argc, char* argv[] ){
 	}
 	else {
 		cout << "(" << myid << ") numdisplay: " << numprocs-1 << endl;
-        Display* display = new Display(myid, WIDTH, HEIGHT, numprocs-1, true);
+        //Display* display = new Display(myid, WIDTH, HEIGHT, numprocs-1, true);
+        Display* display = new Display(myid, WIDTH/(numprocs-1), HEIGHT, 1, true);
         int ret = display->initWindow(SCREEN_WIDTH, SCREEN_HEIGHT);
         display->setup();
 
@@ -634,7 +656,7 @@ int main( int argc, char* argv[] ){
 				MPI_Recv(&buff_data_length, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &stat);
 				cout << "(" << myid << ") data length: " << buff_data_length << endl;
 				buff_data = new unsigned char[buff_data_length];
-				rgbImageData = new unsigned char [WIDTH*HEIGHT*3];
+				//rgbImageData = new unsigned char [WIDTH*HEIGHT*3];
 				
 				strcpy(buff, "ok");
 		        MPI_Send(buff, 256, MPI_CHAR, 0, 0, MPI_COMM_WORLD);
