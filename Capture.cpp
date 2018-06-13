@@ -71,6 +71,8 @@ int part_buff_length;
 bool first_frame = true;
 static BMDTimeValue startoftime;
 BMDTimeValue frameRateDuration, frameRateScale;
+// rgb buffer
+unsigned char* rgb_buff = NULL;
 
 // Capture
 static pthread_mutex_t	g_sleepMutex;
@@ -531,6 +533,38 @@ bail:
 	return exitStatus;
 }
 
+#define clip(A) ( ((A)<0) ? 0 : ( ((A)>255) ? 255 : (A) ) )
+
+#define YUV444toRGB888(Y,U,V,R,G,B)					\
+    R = clip(( 298 * (Y-16)                 + 409 * (V-128) + 128) >> 8); \
+    G = clip(( 298 * (Y-16) - 100 * (U-128) - 208 * (V-128) + 128) >> 8); \
+    B = clip(( 298 * (Y-16) + 516 * (U-128)                 + 128) >> 8);
+
+//typedef unsigned char BYTE;
+void YUV422UYVY_ToRGB24(unsigned char* pbYUV, unsigned char* pbRGB, int yuv_len)
+{
+	unsigned char u,v,y1,y2;
+	unsigned char r1,r2,g1,g2,b1,b2;
+	int i, k;
+	k = 0;
+	for (i=0;i< yuv_len/4;i++) {
+	    u  = pbYUV[4*i+0];
+	    y1 = pbYUV[4*i+1];
+	    v  = pbYUV[4*i+2];
+	    y2 = pbYUV[4*i+3];
+       
+	    YUV444toRGB888(y1, u, v, r1,g1,b1);
+	    YUV444toRGB888(y2, u, v, r2,g2,b2);
+	    pbRGB[k + 0] = r1;
+	    pbRGB[k + 1] = g1;
+	    pbRGB[k + 2] = b1;
+	    pbRGB[k + 3] = r2;
+	    pbRGB[k + 4] = g2;
+	    pbRGB[k + 5] = b2;
+	    k += 6;
+	}
+}
+
 int main( int argc, char* argv[] ){
 
     char idstr[1024]; 
@@ -561,7 +595,7 @@ int main( int argc, char* argv[] ){
 	else {
 		cout << "(" << myid << ") numdisplay: " << numprocs-1 << endl;
         //Display* display = new Display(myid, WIDTH, HEIGHT, numprocs-1, true);
-        Display* display = new Display(myid, WIDTH/(numprocs-1), HEIGHT, 1, true);
+        Display* display = new Display(myid, WIDTH/(numprocs-1), HEIGHT, 1, false);
         int ret = display->initWindow(SCREEN_WIDTH, SCREEN_HEIGHT);
         display->setup();
 
@@ -582,7 +616,7 @@ int main( int argc, char* argv[] ){
 				MPI_Recv(&buff_data_length, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &stat);
 				cout << "(" << myid << ") data length: " << buff_data_length << endl;
 				buff_data = new unsigned char[buff_data_length];
-				//rgbImageData = new unsigned char [WIDTH*HEIGHT*3];
+				rgb_buff = new unsigned char [WIDTH*HEIGHT*3];
 				
 				strcpy(buff, "ok");
 		        MPI_Send(buff, 256, MPI_CHAR, 0, 0, MPI_COMM_WORLD);
@@ -593,9 +627,9 @@ int main( int argc, char* argv[] ){
 
 				// now receive buffer and update display
 				MPI_Recv(buff_data, buff_data_length, MPI_UNSIGNED_CHAR, 0, 0, MPI_COMM_WORLD, &stat);
-				//YUV422UYVY_ToRGB24((unsigned char*)buff_data, rgbImageData, buff_data_length);
-				//display->update(rgbImageData);
-				display->update((unsigned char*)buff_data);
+				YUV422UYVY_ToRGB24((unsigned char*)buff_data, rgb_buff, buff_data_length);
+				display->update(rgb_buff);
+				//display->update((unsigned char*)buff_data);
 				display->render();
 				
 				strcpy(buff, "ok");
@@ -605,6 +639,9 @@ int main( int argc, char* argv[] ){
 
 		if (buff_data)
 			delete  []buff_data;
+
+		if (rgb_buff)
+			delete []rgb_buff;
 	}
 
 	return 0;
