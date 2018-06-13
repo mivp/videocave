@@ -164,16 +164,18 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			if (h == S_OK)  {
 				double frametime = (double)(hframeTime-startoftime) / (double)hframeDuration;
 				if ( ((int)frametime) > g_frameCount) { skip = true; }
+				//cout << g_frameCount << " frametime: " << frametime  << " hframeDuration: " << hframeDuration << endl;
 
 				unsigned int timePass = getTime() - startTime;
-				if(timePass > g_frameCount * (hframeDuration/30.0))
-					skip = 1;
+				//cout << g_frameCount << " timePass: " << timePass << " " << (double)timePass/(hframeDuration/30.0) << endl;
+				if(timePass > g_frameCount * (hframeDuration/25.0))
+					skip = true;
 			}
 
 			if(skip)
 				cout << "#" << flush;
 			
-			if(g_frameCount % 30 == 0) {
+			if(g_frameCount % 90 == 0) {
 				/*
 				printf("Frame received (#%lu) [%s] - %s - Size: %li bytes\n",
 					g_frameCount,
