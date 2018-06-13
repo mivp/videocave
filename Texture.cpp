@@ -29,6 +29,8 @@ namespace videocave {
                 format = GL_RGBA;
                 globalFormat = GL_BGRA;
                 type = GL_UNSIGNED_INT_8_8_8_8_REV;
+                minFilter = GL_NEAREST;
+                magFilter = GL_NEAREST;
             }
 
             glActiveTexture(glunit);
@@ -37,8 +39,8 @@ namespace videocave {
 
             glTexImage2D(GL_TEXTURE_2D, 0, format, width, height, 0, globalFormat, type, NULL);
           
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER); //GL_CLAMP_TO_BORDER GL_REPEAT
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP); //GL_CLAMP_TO_BORDER GL_REPEAT
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minFilter);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, magFilter);
             glBindTexture(GL_TEXTURE_2D, 0);

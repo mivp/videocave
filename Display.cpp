@@ -95,8 +95,15 @@ namespace videocave {
     void Display::render() {
         setup();
 
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glClearColor(0.0f,0.0f,0.0f,0.0f);
+        //glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        //glClearColor(0.0f,0.0f,0.0f,0.0f);
+        // Setup the scene
+        glShadeModel( GL_SMOOTH );					// Enable smooth shading
+        glClearColor( 0.0f, 0.0f, 0.0f, 0.0f );		// Black background
+        glClearDepth( 1.0f );						// Depth buffer setup
+        glDisable( GL_DEPTH_TEST );					// Disable depth testing
+        //glDepthFunc( GL_LEQUAL );					// Type of depth test to do
+        glHint( GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST );
         
         GLSLProgram* shader = mMaterial->getShader();
         shader->bind();
