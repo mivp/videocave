@@ -71,6 +71,7 @@ int part_buff_length;
 bool first_frame = true;
 static BMDTimeValue startoftime;
 BMDTimeValue frameRateDuration, frameRateScale;
+float frameRate;
 // rgb buffer
 unsigned char* rgb_buff = NULL;
 
@@ -165,13 +166,12 @@ HRESULT DeckLinkCaptureDelegate::VideoInputFrameArrived(IDeckLinkVideoInputFrame
 			HRESULT h = videoFrame->GetHardwareReferenceTimestamp(htimeScale, &hframeTime, &hframeDuration);
 			if (h == S_OK)  {
 				double frametime = (double)(hframeTime-startoftime) / (double)hframeDuration;
-				if ( ((int)frametime) > g_frameCount) { skip = true; }
+				if ( (int)frametime > g_frameCount ) { skip = true; g_frameCount++; }
 				//cout << g_frameCount << " frametime: " << frametime  << " hframeDuration: " << hframeDuration << endl;
 
 				unsigned int timePass = getTime() - startTime;
-				//cout << g_frameCount << " timePass: " << timePass << " " << (double)timePass/(hframeDuration/30.0) << endl;
-				if(timePass > g_frameCount * (hframeDuration/25.0))
-					skip = true;
+				//cout << g_frameCount << " timePass: " << timePass << " " << (double)g_frameCount * (hframeDuration/50.0) << endl;
+				if(timePass > (double)g_frameCount * (hframeDuration/(0.85*frameRate))) { skip = true; g_frameCount++; }
 			}
 
 			if(skip)
@@ -435,6 +435,7 @@ int runCapture(int argc, char *argv[])
 	}
 
 	displayMode->GetFrameRate(&frameRateDuration, &frameRateScale);
+	frameRate = (float)frameRateScale / frameRateDuration;
 
 	// Print the selected configuration
 	g_config.DisplayConfiguration();
